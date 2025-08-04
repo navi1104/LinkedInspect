@@ -8,12 +8,19 @@ interface Experience {
   description: string;
 }
 
+interface Certification {
+  title: string;
+  issuer: string;
+  date: string;
+}
+
 interface ProfileData {
   name: string;
   headline: string;
   about: string;
   skills: string[];
   experiences: Experience[];
+  certifications: Certification[];
 }
 
 function Popup() {
@@ -38,7 +45,6 @@ function Popup() {
               setError("Couldn't access the LinkedIn page. Are you on a profile?");
               return;
             }
-
             setProfile(response.profileData);
           }
         );
@@ -66,6 +72,7 @@ function Popup() {
           <p><strong>Name:</strong> {profile.name}</p>
           <p><strong>Headline:</strong> {profile.headline}</p>
           <p><strong>About:</strong> {profile.about}</p>
+
           <p><strong>Skills:</strong> {profile.skills.join(', ')}</p>
 
           <h4>Experiences:</h4>
@@ -81,6 +88,21 @@ function Popup() {
             </ul>
           ) : (
             <p>No experience data found.</p>
+          )}
+
+          <h4>Certifications:</h4>
+          {profile.certifications.length > 0 ? (
+            <ul>
+              {profile.certifications.map((cert, index) => (
+                <li key={index}>
+                  <strong>{cert.title}</strong>
+                  {cert.issuer && ` — ${cert.issuer}`}<br />
+                  {cert.date && <small>Issued {cert.date}</small>}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p>No certifications found.</p>
           )}
         </div>
       )}
