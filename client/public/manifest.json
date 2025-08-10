@@ -1,25 +1,24 @@
 {
   "manifest_version": 3,
-  "name": "LinkedIn Evaluator",
-  "version": "1.0",
-  "permissions": ["scripting", "tabs", "activeTab"],
-  "host_permissions": ["https://www.linkedin.com/in/*"],
-  "action": {
-    "default_popup": "index.html",
-    "default_icon": {
-      "16": "icon.png",
-      "48": "icon.png",
-      "128": "icon.png"
-    }
-  },
+  "name": "LinkedInspect",
+  "version": "1.0.0",
+  "description": "Scrapes LinkedIn profile data (headline, about, skills, experience, certifications).",
+  "permissions": ["activeTab", "scripting", "storage", "tabs"],
+  "host_permissions": ["https://www.linkedin.com/*"],
   "background": {
     "service_worker": "background.js"
   },
+  "action": {
+    "default_popup": "index.html",
+    "default_icon": {
+      "48": "icon.png"
+    }
+  },
   "content_scripts": [
-  {
-    "matches": ["*://*.linkedin.com/*"],
-    "js": ["content/content.js"],
-    "run_at": "document_idle"
-  }
-]
+    {
+      "matches": ["https://www.linkedin.com/*"],
+      "js": ["content/content.js"],
+      "run_at": "document_idle"
+    }
+  ]
 }

@@ -1,90 +1,152 @@
+import type{
+  ContentRequest,
+  ContentResponse,
+  Experience,
+  Certification
+} from '../types';
+
 function scrollToBottom(callback: () => void) {
-  let totalHeight = 0;
-  const distance = 100;
-  const timer = setInterval(() => {
+  let total = 0;
+  const distance = 200;
+  const timer = window.setInterval(() => {
     const scrollHeight = document.body.scrollHeight;
     window.scrollBy(0, distance);
-    totalHeight += distance;
-
-    if (totalHeight >= scrollHeight - window.innerHeight) {
-      clearInterval(timer);
-      setTimeout(callback, 2000); // Wait for lazy-loaded sections
+    total += distance;
+    if (total >= scrollHeight - window.innerHeight) {
+      window.clearInterval(timer);
+      // wait a bit for lazy content
+      setTimeout(callback, 1200);
     }
-  }, 100);
+  }, 120);
 }
 
-function extractLinkedInProfile() {
-  scrollToBottom(()=>{})
-  // const nameEl = document.querySelector('h1.text-heading-xlarge') as HTMLElement;
-  const headlineEl = document.querySelector('div.text-body-medium.break-words') as HTMLElement;
+function scrapeBase(): { headline: string; about: string } {
+  const headlineEl =
+    document.querySelector('div.text-body-medium.break-words') ??
+    document.querySelector('.pv-top-card--list .text-body-medium');
+  const headline = (headlineEl as HTMLElement | null)?.innerText?.trim() ?? '';
 
-  // ----------- About Section ------------
+  // About / summary variations
 const aboutFallback = document.querySelector(
   'div.inline-show-more-text--is-collapsed span[aria-hidden="true"]'
 ) as HTMLElement | null;
-
 const about = aboutFallback ? aboutFallback.innerText.trim() : '';
 
+  return { headline, about };
+}
 
-  // ----------- Experience Section ------------
-  const experienceSection = Array.from(document.querySelectorAll('section')).find(
-    (sec) => sec.innerText.toLowerCase().includes('experience')
-  );
-  const experienceItems = experienceSection?.querySelectorAll('li') ?? [];
+function scrapeExperience(): Experience[] {
+  const experiences: Experience[] = [];
 
-  const experiences: { title: string; company: string; date: string; description: string }[] = [];
-  experienceItems.forEach((item) => {
-    const title = item.querySelector('span[aria-hidden="true"]')?.textContent?.trim() ?? '';
-    const company = item.querySelector('span.t-14.t-normal')?.textContent?.trim() ?? '';
-    const date = item.querySelector('.t-14.t-normal.t-black--light')?.textContent?.trim() ?? '';
+  document.querySelectorAll('[data-view-name="profile-component-entity"], .pvs-list__item--with-top-padding').forEach(card => {
+    const title = card.querySelector('.t-bold span[aria-hidden="true"]')?.textContent?.trim() || '';
+    const company = card.querySelector('.t-14.t-normal span[aria-hidden="true"]')?.textContent?.trim() || '';
+    const dateRange = card.querySelector('.t-14.t-normal.t-black--light span[aria-hidden="true"]')?.textContent?.trim() || '';
 
+    // Capture description: any text in sub-components, including bullets and line breaks
     let description = '';
-    const descEl = item.querySelectorAll('span.visually-hidden');
-    if (descEl.length > 1) {
-      description = descEl[descEl.length - 1].textContent?.trim() ?? '';
+    const descContainer = card.querySelector('.pvs-entity__sub-components');
+    if (descContainer) {
+      description = Array.from(descContainer.querySelectorAll('span[aria-hidden="true"]'))
+        .map(el => el.textContent?.trim() || '')
+        .filter(Boolean)
+        .join('\n');
     }
 
-    if (title && company) {
-      experiences.push({ title, company, date, description });
+    // Fallback: Sometimes description is not in sub-components but nested deeper
+    if (!description) {
+      description = Array.from(card.querySelectorAll('.t-14.t-normal.t-black span[aria-hidden="true"]'))
+        .map(el => el.textContent?.trim() || '')
+        .filter(Boolean)
+        .join('\n');
+    }
+
+    if (title) {
+      experiences.push({
+        title,
+        company,
+        date: dateRange,
+        description
+      });
     }
   });
 
-  // ----------- Skills Section ------------
-const skillElements = document.querySelectorAll(
-  'section.pvs-list__outer-container a[href*="/skills/"] span[aria-hidden="true"]'
-);
-
-const skills = Array.from(skillElements).map((el) => (el as HTMLElement).innerText.trim());
-
-   // ----------- Certifications Section ------------
- const certificationElements = document.querySelectorAll('#certifications .pvs-list > li');
-
-const certifications = Array.from(certificationElements).map((el) => {
-  const spans = el.querySelectorAll('span');
-  const issuer = (spans[1] as HTMLElement)?.innerText.trim() || '';
-  const title = (el.querySelector('span[aria-hidden="true"]') as HTMLElement)?.innerText.trim() || '';
-  const dateMatch = ((el as HTMLElement).innerText.match(/Issued.*?\d{4}/g) || [])[0]?.replace("Issued", "").trim() || '';
-  return { title,issuer, date: dateMatch };
-});
-
-  // ----------- Final Profile Object ------------
-  const profile = {
-    // name: nameEl?.innerText?.trim() ?? '',
-    headline: headlineEl?.innerText?.trim() ?? '',
-    about,
-    skills,
-    experiences,
-       certifications,
-  };
-
-  console.log('✅ Profile Extracted:', profile);
-  return profile;
+  console.log('[SCRAPE_EXPERIENCE] Extracted:', experiences);
+  return experiences;
 }
 
-// Listener
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message.type === 'EXTRACT_PROFILE') {
-    const profileData = extractLinkedInProfile();
-    sendResponse({ profileData });
+
+
+// Usage:
+expandExperienceDescriptions();
+setTimeout(() => {
+  const data = scrapeExperience();
+  console.log(data);
+}, 1500);
+
+function expandExperienceDescriptions() {
+  document.querySelectorAll('button[aria-label^="see more"], button[aria-label^="Show more"]').forEach(btn => {
+    (btn as HTMLElement).click();
+  });
+}
+
+
+function scrapeSkills(): string[] {
+  const skills: string[] = [];
+
+  document.querySelectorAll<HTMLDivElement>(
+    '.display-flex.align-items-center.mr1.hoverable-link-text.t-bold span[aria-hidden="true"]'
+  ).forEach((el) => {
+    const text = el.textContent?.trim();
+    if (text) skills.push(text);
+  });
+
+  return skills;
+}
+
+
+function scrapeCertifications(): Certification[] {
+  const certs: Certification[] = [];
+
+  // Find each certification block in LinkedIn's new DOM
+  document.querySelectorAll('.display-flex.flex-column.full-width').forEach((el) => {
+    const title = (el.querySelector('.t-bold span[aria-hidden="true"]') as HTMLElement)?.innerText?.trim() || '';
+    const issuer = (el.querySelector('.t-14.t-normal span[aria-hidden="true"]') as HTMLElement)?.innerText?.trim() || '';
+    const date = (el.querySelector('.t-14.t-normal.t-black--light span[aria-hidden="true"]') as HTMLElement)?.innerText?.trim() || '';
+
+    if (title) {
+      certs.push({ title, issuer, date });
+    }
+  });
+
+  console.log('[SCRAPE_CERTIFICATIONS] Extracted:', certs);
+  return certs;
+}
+
+
+
+
+
+/** strongly typed listener */
+chrome.runtime.onMessage.addListener(
+  (message: ContentRequest, _sender: chrome.runtime.MessageSender, sendResponse: (resp: ContentResponse) => void) => {
+    const type = message.type;
+    if (type === 'SCRAPE_BASE') {
+      // base is light, small delay to let header render
+      setTimeout(() => sendResponse({ data: scrapeBase() }), 400);
+      return true;
+    }
+
+    // heavier scrapes -> scroll then respond
+    if (type === 'SCRAPE_EXPERIENCE' || type === 'SCRAPE_SKILLS' || type === 'SCRAPE_CERTIFICATIONS') {
+      scrollToBottom(() => {
+        if (type === 'SCRAPE_EXPERIENCE') sendResponse({ data: scrapeExperience() });
+        else if (type === 'SCRAPE_SKILLS') sendResponse({ data: scrapeSkills() });
+        else sendResponse({ data: scrapeCertifications() });
+      });
+      return true;
+    }
+
+    return false;
   }
-});
+);

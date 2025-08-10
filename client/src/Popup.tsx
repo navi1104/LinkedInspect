@@ -1,113 +1,110 @@
-import { useState } from 'react';
-import './Popup.css';
 
-interface Experience {
-  title: string;
-  company: string;
-  duration: string;
-  description: string;
-}
+import React, { useEffect, useState } from "react";
+import type{
+  ProfileData,
+  BackgroundRequest,
+  BackgroundResponse,
+  Experience,
+  Certification,
+} from "./types";
+import "./Popup.css";
 
-interface Certification {
-  title: string;
-  issuer: string;
-  date: string;
-}
-
-interface ProfileData {
-  name: string;
-  headline: string;
-  about: string;
-  skills: string[];
-  experiences: Experience[];
-  certifications: Certification[];
-}
-
-function Popup() {
-  const [jobDesc, setJobDesc] = useState<string>('');
+const Popup: React.FC = () => {
   const [profile, setProfile] = useState<ProfileData | null>(null);
-  const [error, setError] = useState<string>('');
+  const [status, setStatus] = useState<string>("");
 
-  const handleEvaluate = () => {
-    if (!jobDesc.trim()) {
-      setError('Please enter a job description.');
-      return;
-    }
-
-    setError('');
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs[0]?.id) {
-        chrome.tabs.sendMessage(
-          tabs[0].id,
-          { type: 'EXTRACT_PROFILE' },
-          (response) => {
-            if (chrome.runtime.lastError || !response?.profileData) {
-              setError("Couldn't access the LinkedIn page. Are you on a profile?");
-              return;
-            }
-            setProfile(response.profileData);
-          }
-        );
+  useEffect(() => {
+    chrome.storage.local.get("linkedinProfileData", (result) => {
+      if (result?.linkedinProfileData) {
+        setProfile(result.linkedinProfileData as ProfileData);
       }
     });
+  }, []);
+
+  const handleExtractClick = () => {
+    setStatus("Extracting profile...");
+    const request: BackgroundRequest = { type: "EXTRACT_FULL_PROFILE" };
+
+    chrome.runtime.sendMessage(
+      request,
+      (response: BackgroundResponse | undefined) => {
+        if (!response) {
+          setStatus("No response from background script.");
+          return;
+        }
+        if (response.error) {
+          setStatus(`Error: ${response.error}`);
+          return;
+        }
+        if (response.profileData) {
+          setProfile(response.profileData);
+          setStatus("Profile extraction complete.");
+        } else {
+          setStatus("Extraction finished, no data found.");
+        }
+      }
+    );
   };
 
   return (
     <div className="popup-container">
-      <h2>LinkedIn Evaluator</h2>
+      <h2 className="popup-title">LinkedInSpect</h2>
 
-      <textarea
-        placeholder="Paste job description here..."
-        value={jobDesc}
-        onChange={(e) => setJobDesc(e.target.value)}
-      />
+      <div className="popup-actions">
+        <button onClick={handleExtractClick} className="popup-button">
+          Extract Profile
+        </button>
+        {status && <span className="popup-status">{status}</span>}
+      </div>
 
-      <button onClick={handleEvaluate}>Evaluate Profile</button>
-
-      {error && <p className="error">{error}</p>}
-
-      {profile && (
-        <div className="profile-summary">
-          <h4>Profile Summary:</h4>
-          <p><strong>Name:</strong> {profile.name}</p>
-          <p><strong>Headline:</strong> {profile.headline}</p>
-          <p><strong>About:</strong> {profile.about}</p>
-
-          <p><strong>Skills:</strong> {profile.skills.join(', ')}</p>
-
-          <h4>Experiences:</h4>
-          {profile.experiences.length > 0 ? (
+      {profile ? (
+        <div className="popup-content">
+          <Section title="Headline">{profile.headline}</Section>
+          <Section title="About">{profile.about}</Section>
+           <Section title="Skills">
             <ul>
-              {profile.experiences.map((exp, index) => (
-                <li key={index}>
-                  <strong>{exp.title}</strong> at <em>{exp.company}</em><br />
-                  <small>{exp.duration}</small>
-                  <p>{exp.description}</p>
+              {profile.skills.map((skill: string, idx: number) => (
+                <li key={idx}>{skill}</li>
+              ))}
+            </ul>
+          </Section>
+          <Section title="Experience">
+            <ul>
+              {profile.experience.map((exp: Experience, idx: React.Key | null | undefined) => (
+                <li key={idx}>
+                  <strong>{exp.title}</strong> — {exp.company}
+                  <div className="date">{exp.date}</div>
                 </li>
               ))}
             </ul>
-          ) : (
-            <p>No experience data found.</p>
-          )}
-
-          <h4>Certifications:</h4>
-          {profile.certifications.length > 0 ? (
+          </Section>
+          <Section title="Certifications">
             <ul>
-              {profile.certifications.map((cert, index) => (
-                <li key={index}>
-                  <strong>{cert.title}</strong>
-                  {cert.issuer && ` — ${cert.issuer}`}<br />
-                  {cert.date && <small>Issued {cert.date}</small>}
+              {profile.certifications.map((cert: Certification, idx: React.Key | null | undefined) => (
+                <li key={idx}>
+                  {cert.title} — {cert.issuer}{" "}
+                  <span className="date">{cert.date}</span>
                 </li>
               ))}
             </ul>
-          ) : (
-            <p>No certifications found.</p>
-          )}
+          </Section>
         </div>
+      ) : (
+        <p className="popup-empty">No profile data yet.</p>
       )}
     </div>
   );
-}
+};
+
+const Section: React.FC<{ title: string; children: React.ReactNode }> = ({
+  title,
+  children,
+}) => (
+  <div className="section">
+    <h3>{title}</h3>
+    <div className="section-content">{children}</div>
+  </div>
+);
 
 export default Popup;
+
